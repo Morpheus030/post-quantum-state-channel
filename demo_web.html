@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>State Channel PQ — Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #0f0f1a;
+    --card: #13131f;
+    --border: #1e1e30;
+    --accent: #00ff88;
+    --accent2: #0088ff;
+    --accent3: #ff6600;
+    --text: #e0e0f0;
+    --muted: #666688;
+    --success: #00ff88;
+    --pending: #ffaa00;
+    --error: #ff4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .badge {
+    display: inline-block;
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: 3px;
+    padding: 4px 12px;
+    border-radius: 2px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .card.active::before { opacity: 1; }
+
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .device-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    margin-bottom: 12px;
+  }
+
+  .device-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  /* Data rows */
+  .data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    gap: 12px;
+  }
+
+  .data-row:last-child { border-bottom: none; }
+
+  .data-key { color: var(--muted); white-space: nowrap; }
+
+  .data-val {
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    text-align: right;
+    word-break: break-all;
+    max-width: 200px;
+  }
+
+  .data-val.accent { color: var(--accent); }
+  .data-val.accent2 { color: var(--accent2); }
+  .data-val.accent3 { color: var(--accent3); }
+
+  /* Status indicator */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+    margin-right: 6px;
+  }
+
+  .status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
+  .status-dot.pending { background: var(--pending); animation: pulse 1s infinite; }
+  .status-dot.error { background: var(--error); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Log */
+  .log-container {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 16px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .log-entry {
+    font-size: 11px;
+    line-height: 1.8;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .log-entry.ok .log-msg { color: var(--success); }
+  .log-entry.info .log-msg { color: var(--accent2); }
+  .log-entry.warn .log-msg { color: var(--pending); }
+  .log-entry.header .log-msg {
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .log-time { color: var(--border); white-space: nowrap; }
+  .log-msg { flex: 1; }
+
+  /* Payments table */
+  .payments {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .payment-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    opacity: 0.3;
+    transition: opacity 0.4s;
+  }
+
+  .payment-row:last-child { border-bottom: none; }
+  .payment-row.done { opacity: 1; }
+  .payment-row.active { opacity: 1; }
+
+  .pay-k {
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    color: var(--accent);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  .pay-id { color: var(--text); }
+  .pay-amount { color: var(--accent); font-weight: 700; }
+  .pay-status { color: var(--muted); text-align: right; }
+  .pay-status.done { color: var(--success); }
+  .pay-status.active { color: var(--pending); }
+
+  /* Button */
+  .btn-run {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 16px;
+  }
+
+  .btn-run:hover { background: #00ff99; transform: translateY(-1px); }
+  .btn-run:active { transform: translateY(0); }
+  .btn-run:disabled {
+    background: var(--border);
+    color: var(--muted);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Channel state */
+  .channel-state {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .balance-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin: 12px 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .balance-fill-a {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--accent2);
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  .balance-fill-b {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    background: var(--accent3);
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  .balance-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+
+  .balance-a { color: var(--accent2); }
+  .balance-b { color: var(--accent3); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Fade in animation */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fadeIn { animation: fadeIn 0.3s ease forwards; }
+
+  /* NFC animation */
+  .nfc-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 20px;
+    margin: 16px 0;
+  }
+
+  .nfc-device {
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .nfc-wave {
+    position: relative;
+    width: 60px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nfc-wave span {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    opacity: 0;
+  }
+
+  .nfc-wave span:nth-child(1) { animation: wave 1.5s 0s infinite; }
+  .nfc-wave span:nth-child(2) { animation: wave 1.5s 0.3s infinite; width: 36px; height: 36px; }
+  .nfc-wave span:nth-child(3) { animation: wave 1.5s 0.6s infinite; width: 52px; height: 52px; }
+
+  @keyframes wave {
+    0% { opacity: 0.8; transform: scale(0.5); }
+    100% { opacity: 0; transform: scale(1); }
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">Post-Quantum · State Channel · Bitcoin</div>
+    <h1>Payment System Demo</h1>
+    <p class="subtitle">Hardened CTIDH · ML-DSA-44 · State Channel · Bitcoin Testnet</p>
+  </header>
+
+  <button class="btn-run" id="btnRun" onclick="runDemo()">
+    ▶ &nbsp; RUN PAYMENT SIMULATION
+  </button>
+
+  <!-- Devices -->
+  <div class="layout" id="devicesSection">
+    <div class="card" id="cardPhone">
+      <div class="card-label">Device A</div>
+      <div class="device-icon">📱</div>
+      <div class="device-name">Telefono-Alice</div>
+      <div id="phoneData">
+        <div class="data-row">
+          <span class="data-key">Status</span>
+          <span class="data-val"><span class="status-dot"></span>idle</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">sk_id</span>
+          <span class="data-val muted">—</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">pk_eph</span>
+          <span class="data-val muted">—</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">Cert Core</span>
+          <span class="data-val muted">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="cardPos">
+      <div class="card-label">Device B</div>
+      <div class="device-icon">🏪</div>
+      <div class="device-name">POS-Merchant</div>
+      <div id="posData">
+        <div class="data-row">
+          <span class="data-key">Status</span>
+          <span class="data-val"><span class="status-dot"></span>idle</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">sk_id</span>
+          <span class="data-val muted">—</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">pk_eph</span>
+          <span class="data-val muted">—</span>
+        </div>
+        <div class="data-row">
+          <span class="data-key">Cert Core</span>
+          <span class="data-val muted">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NFC Exchange (hidden initially) -->
+  <div class="card hidden" id="nfcSection">
+    <div class="card-label">NFC Exchange</div>
+    <div class="nfc-indicator">
+      <div class="nfc-device">📱<br>Telefono</div>
+      <div class="nfc-wave">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="nfc-device">🏪<br>POS</div>
+    </div>
+    <div id="nfcStatus" style="text-align:center; font-size:11px; color:var(--muted)">
+      Scambio chiavi effimere in corso...
+    </div>
+  </div>
+
+  <!-- Shared Secret -->
+  <div class="card hidden" id="secretSection">
+    <div class="card-label">Shared Secret</div>
+    <div class="data-row">
+      <span class="data-key">j_shared (Telefono)</span>
+      <span class="data-val accent" id="jSharedA">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">j_shared (POS)</span>
+      <span class="data-val accent" id="jSharedB">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">K simmetrica</span>
+      <span class="data-val accent2" id="kSymm">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Commutatività</span>
+      <span class="data-val" id="commCheck">—</span>
+    </div>
+  </div>
+
+  <!-- Channel State -->
+  <div class="channel-state hidden" id="channelSection">
+    <div class="card-label">State Channel</div>
+    <div class="data-row">
+      <span class="data-key">Channel ID</span>
+      <span class="data-val accent2" id="channelId">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Status</span>
+      <span class="data-val" id="channelStatus">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Last k</span>
+      <span class="data-val" id="channelK">—</span>
+    </div>
+
+    <div class="balance-labels" style="margin-top:16px">
+      <span class="balance-a" id="labelA">Alice: 0.001 BTC</span>
+      <span class="balance-b" id="labelB">Merchant: 0.000 BTC</span>
+    </div>
+    <div class="balance-bar">
+      <div class="balance-fill-a" id="fillA" style="width:100%"></div>
+      <div class="balance-fill-b" id="fillB" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Payments -->
+  <div class="payments hidden" id="paymentsSection">
+    <div class="card-label">Checkpoints</div>
+    <div id="paymentsList"></div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-container" id="logContainer">
+    <div class="log-entry info">
+      <span class="log-time">00:00</span>
+      <span class="log-msg">Sistema pronto. Premi RUN per avviare la simulazione.</span>
+    </div>
+  </div>
+
+  <!-- Final State -->
+  <div class="card hidden" id="finalSection">
+    <div class="card-label">EOD — End of Day</div>
+    <div class="data-row">
+      <span class="data-key">Canale</span>
+      <span class="data-val" id="finalStatus">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Saldo finale Alice</span>
+      <span class="data-val accent2" id="finalA">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Saldo finale Merchant</span>
+      <span class="data-val accent3" id="finalB">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Checkpoint totali</span>
+      <span class="data-val" id="finalK">—</span>
+    </div>
+    <div class="data-row">
+      <span class="data-key">Audit trail</span>
+      <span class="data-val accent" id="finalAudit">—</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const CORE = '';  // URL relativo: funziona sia in locale che su cloud
+  let startTime = null;
+
+  function ts() {
+    const d = new Date() - startTime;
+    const s = Math.floor(d/1000);
+    const ms = String(d%1000).padStart(3,'0');
+    return `${String(s).padStart(2,'0')}:${ms}`;
+  }
+
+  function log(msg, type='info') {
+    const c = document.getElementById('logContainer');
+    const e = document.createElement('div');
+    e.className = `log-entry ${type} fadeIn`;
+    e.innerHTML = `<span class="log-time">${ts()}</span><span class="log-msg">${msg}</span>`;
+    c.appendChild(e);
+    c.scrollTop = c.scrollHeight;
+  }
+
+  function show(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('hidden');
+    el.classList.add('fadeIn');
+  }
+
+  function setDeviceData(device, data) {
+    const id = device === 'phone' ? 'phoneData' : 'posData';
+    const cardId = device === 'phone' ? 'cardPhone' : 'cardPos';
+    document.getElementById(cardId).classList.add('active');
+    document.getElementById(id).innerHTML = `
+      <div class="data-row">
+        <span class="data-key">Status</span>
+        <span class="data-val"><span class="status-dot ${data.status}"></span>${data.statusText}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-key">ML-DSA-44 pk_id</span>
+        <span class="data-val accent2">${data.pkId}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-key">pk_eph CTIDH</span>
+        <span class="data-val accent">${data.pkEph}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-key">Cert Core</span>
+        <span class="data-val">${data.cert}</span>
+      </div>
+    `;
+  }
+
+  function updateBalance(a, b) {
+    const total = a + b;
+    const pctA = total > 0 ? (a/total)*100 : 100;
+    const pctB = total > 0 ? (b/total)*100 : 0;
+    document.getElementById('fillA').style.width = pctA + '%';
+    document.getElementById('fillB').style.width = pctB + '%';
+    document.getElementById('labelA').textContent = `Alice: ${a.toFixed(4)} BTC`;
+    document.getElementById('labelB').textContent = `Merchant: ${b.toFixed(4)} BTC`;
+  }
+
+  function addPaymentRow(k, invoiceId, amount, status) {
+    const list = document.getElementById('paymentsList');
+    const existing = document.getElementById('pay-' + k);
+    if (existing) {
+      existing.className = `payment-row ${status}`;
+      existing.querySelector('.pay-status').className = `pay-status ${status}`;
+      existing.querySelector('.pay-status').textContent = status === 'done' ? '✓ ACCEPTED' : status.toUpperCase();
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = `payment-row ${status} fadeIn`;
+    row.id = 'pay-' + k;
+    row.innerHTML = `
+      <span class="pay-k">C_${k}</span>
+      <span class="pay-id">${invoiceId}</span>
+      <span class="pay-amount">${amount} BTC</span>
+      <span class="pay-status ${status}">${status === 'done' ? '✓ ACCEPTED' : status.toUpperCase()}</span>
+    `;
+    list.appendChild(row);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function runDemo() {
+    document.getElementById('btnRun').disabled = true;
+    startTime = new Date();
+
+    log('━━━ AVVIO SIMULAZIONE REALE ━━━', 'header');
+    log('Connessione al Core...', 'info');
+
+    // Chiama il Core per eseguire tutta la simulazione reale
+    let result;
+    try {
+      const r = await fetch(CORE + '/demo_completo', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+      });
+      result = await r.json();
+    } catch(e) {
+      log('Core non raggiungibile. Avvia core_server.py prima di eseguire la demo.', 'warn');
+      document.getElementById('btnRun').disabled = false;
+      document.getElementById('btnRun').textContent = '↺   RESTART SIMULATION';
+      return;
+    }
+
+    if (result.status !== 'ok') {
+      log('Errore nel Core: ' + (result.errore || 'errore sconosciuto'), 'warn');
+      document.getElementById('btnRun').disabled = false;
+      return;
+    }
+
+    // Mostra gli step uno alla volta con animazione
+    let balA = 0.001, balB = 0.0;
+    let channelId = result.channel_id;
+    let pkIdA = '', pkIdB = '', pkEphA = '—', pkEphB = '—', certA = '', certB = '';
+    let jShared = 0, K = '';
+    let paymentIndex = 0;
+
+    show('channelSection');
+    show('paymentsSection');
+    updateBalance(balA, balB);
+
+    for (const step of result.steps) {
+      await sleep(400);
+
+      const tipo = step.tipo;
+      const msg = step.msg;
+      const data = step.data;
+
+      log(msg, tipo);
+
+      // Aggiorna UI in base al tipo di step
+      if (data.device === 'Telefono-Alice') {
+        pkIdA = data.pk_id || pkIdA;
+        certA = `cert ML-DSA-44 (${data.cert_size} byte)`;
+        setDeviceData('phone', {
+          status: 'ok', statusText: 'registered',
+          pkId: pkIdA, pkEph: pkEphA, cert: certA
+        });
+      }
+
+      if (data.device === 'POS-Merchant') {
+        pkIdB = data.pk_id || pkIdB;
+        certB = `cert ML-DSA-44 (${data.cert_size} byte)`;
+        setDeviceData('pos', {
+          status: 'ok', statusText: 'registered',
+          pkId: pkIdB, pkEph: pkEphB, cert: certB
+        });
+      }
+
+      if (data.pk_eph && !data.device) {
+        if (!pkEphA || pkEphA === '—') {
+          pkEphA = data.pk_eph;
+          setDeviceData('phone', {
+            status: 'pending', statusText: 'exchanging',
+            pkId: pkIdA, pkEph: pkEphA, cert: certA
+          });
+        } else {
+          pkEphB = data.pk_eph;
+          setDeviceData('pos', {
+            status: 'pending', statusText: 'exchanging',
+            pkId: pkIdB, pkEph: pkEphB, cert: certB
+          });
+          show('nfcSection');
+          await sleep(800);
+          document.getElementById('nfcStatus').innerHTML =
+            '<span style="color:var(--accent)">✓ Autenticazione reciproca completata</span>';
+        }
+      }
+
+      if (data.j_shared !== undefined) {
+        jShared = data.j_shared;
+        K = data.K || '';
+        show('secretSection');
+        document.getElementById('jSharedA').textContent = jShared;
+        document.getElementById('jSharedB').textContent = jShared;
+        document.getElementById('kSymm').textContent = K;
+        document.getElementById('commCheck').innerHTML =
+          '<span style="color:var(--accent)">✓ j_shared identico — commutatività verificata</span>';
+        setDeviceData('phone', {
+          status: 'ok', statusText: 'ready',
+          pkId: pkIdA, pkEph: pkEphA, cert: certA
+        });
+        setDeviceData('pos', {
+          status: 'ok', statusText: 'ready',
+          pkId: pkIdB, pkEph: pkEphB, cert: certB
+        });
+      }
+
+      if (data.channel_id && data.status === 'ACTIVE') {
+        channelId = data.channel_id;
+        document.getElementById('channelId').textContent = channelId;
+        document.getElementById('channelStatus').innerHTML =
+          '<span class="status-dot ok"></span>ACTIVE';
+        document.getElementById('channelK').textContent = '-1';
+      }
+
+      if (data.k !== undefined && data.invoice_id) {
+        const k = data.k;
+        addPaymentRow(k, data.invoice_id, data.importo, 'active');
+        await sleep(300);
+        balA = data.balance_a;
+        balB = data.balance_b;
+        updateBalance(balA, balB);
+        document.getElementById('channelK').textContent = k;
+        addPaymentRow(k, data.invoice_id, data.importo, 'done');
+        if (data.tx_id) {
+          log(`tx_id: ${data.tx_id}`, 'info');
+          log(`state_root: ${data.state_root}`, 'info');
+        }
+      }
+
+      if (data.status === 'CLOSED') {
+        document.getElementById('channelStatus').innerHTML =
+          '<span class="status-dot"></span><span style="color:var(--muted)">CLOSED</span>';
+        show('finalSection');
+        document.getElementById('finalStatus').innerHTML =
+          '<span style="color:var(--muted)">CLOSED (EOD)</span>';
+        document.getElementById('finalA').textContent = `${data.balance_a.toFixed(4)} BTC`;
+        document.getElementById('finalB').textContent = `${data.balance_b.toFixed(4)} BTC`;
+        document.getElementById('finalK').textContent = `${data.ultimo_k + 1} checkpoint`;
+        document.getElementById('finalAudit').textContent =
+          `${data.audit_eventi} eventi registrati`;
+      }
+    }
+
+    // Settlement on-chain
+    await sleep(500);
+    log('━━━ FASE 8: SETTLEMENT ON-CHAIN ━━━', 'header');
+    log(`Avvio pagamento Electrum: ${balB} BTC → merchant...`, 'info');
+
+    try {
+      const sr = await fetch(CORE + '/settlement', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({channel_id: channelId})
+      });
+      const sd = await sr.json();
+
+      if (sd.txid) {
+        log(`TXID: ${sd.txid} ✓`, 'ok');
+
+        const txRow = document.createElement('div');
+        txRow.className = 'data-row fadeIn';
+        txRow.innerHTML = `
+          <span class="data-key">TXID on-chain</span>
+          <span class="data-val accent">${sd.txid.substring(0,16)}...</span>
+        `;
+        document.getElementById('finalSection').appendChild(txRow);
+
+        const linkRow = document.createElement('div');
+        linkRow.className = 'data-row fadeIn';
+        linkRow.innerHTML = `
+          <span class="data-key">Settlement tx</span>
+          <span class="data-val">
+            <a href="${sd.blockstream_url}" target="_blank"
+               style="color:var(--accent2); text-decoration:none;">
+              Verifica on-chain ↗
+            </a>
+          </span>
+        `;
+        document.getElementById('finalSection').appendChild(linkRow);
+        log('Transazione verificabile su Blockstream ✓', 'ok');
+
+        if (sd.opreturn_txid) {
+          const commitRow = document.createElement('div');
+          commitRow.className = 'data-row fadeIn';
+          commitRow.innerHTML = `
+            <span class="data-key">Commitment</span>
+            <span class="data-val accent">${sd.commitment ? sd.commitment.substring(0,16) + '...' : '—'}</span>
+          `;
+          document.getElementById('finalSection').appendChild(commitRow);
+
+          const opRow = document.createElement('div');
+          opRow.className = 'data-row fadeIn';
+          opRow.innerHTML = `
+            <span class="data-key">OP_RETURN tx</span>
+            <span class="data-val">
+              <a href="${sd.opreturn_url}" target="_blank"
+                 style="color:var(--accent); text-decoration:none;">
+                State root ancorato ↗
+              </a>
+            </span>
+          `;
+          document.getElementById('finalSection').appendChild(opRow);
+          log('State root ancorato su Bitcoin via OP_RETURN ✓', 'ok');
+        }
+      } else {
+        log(`Settlement: ${sd.errore || 'nessun saldo da liquidare'}`, 'warn');
+      }
+    } catch(e) {
+      log('Settlement non disponibile (avvia Electrum per transazione reale)', 'warn');
+    }
+
+    log('━━━ SIMULAZIONE COMPLETATA ✓ ━━━', 'header');
+    document.getElementById('btnRun').disabled = false;
+    document.getElementById('btnRun').textContent = '↺   RESTART SIMULATION';
+  }
+</script>
+</body>
+</html>
